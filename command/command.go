@@ -15,7 +15,7 @@ var Commands = []*Command{
 	Compress, Network,
 	Find, Md5,
 	Compare, Fsnotify,
-	SSH, FTP,
+	SSH, FTP, Replace,
 }
 
 type Command struct {
