@@ -16,6 +16,7 @@ The commands are:
 	fsnotify    可以用来监控文件或者目录的变化
 	ssh         使用ssh协议群发命令或发送文件
 	ftp         使用ftp协议下载或上传文件
+	replace     替换文本内容
 
 Use "wstools help [command]" for more information about a command.
 
@@ -30,6 +31,6 @@ Example:
 	wstools fsnotify -d tools -s scripts.bat
 	wstools ssh -u root -p 123456 -H 192.168.1.2:22 -s main.go -d /tmp
 	wstools ftp -l main.go -r /mnt/main.go -g false
-	
+	wstools replace -o "Hello world" -n "World Hello" -d ./ -s ".json" -q=true
 
 ```
