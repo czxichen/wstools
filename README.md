@@ -18,8 +18,8 @@ The commands are:
 	ftp         使用ftp协议下载或上传文件
 	replace     替换文本内容
 	sysinfo     查看系统信息
-	tail		从文件结尾或指定位置读取内容
-	deploy		快速搭建服务器
+	tail        从文件结尾或指定位置读取内容
+	deploy      快速搭建服务器
 
 Use "wstools help [command]" for more information about a command.
 
