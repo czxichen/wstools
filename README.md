@@ -19,6 +19,7 @@ The commands are:
 	replace     替换文本内容
 	sysinfo     查看系统信息
 	tail		从文件结尾或指定位置读取内容
+	deploy		快速搭建服务器
 
 Use "wstools help [command]" for more information about a command.
 
@@ -35,6 +36,7 @@ Example:
 	wstools ftp -l main.go -r /mnt/main.go -g false
 	wstools replace -o "Hello world" -n "World Hello" -d ./ -s ".json" -q=true
 	wstools sysinfo
-	tail -f main.go -i 100 -s 200 -o tmp.txt
+	wstools tail -f main.go -i 100 -s 200 -o tmp.txt
+	wstools deploy server|client -h
 	
 ```

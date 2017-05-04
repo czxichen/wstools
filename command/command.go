@@ -16,7 +16,7 @@ var Commands = []*Command{
 	Find, Md5,
 	Compare, Fsnotify,
 	SSH, FTP, Replace,
-	SysInfo, Tail,
+	SysInfo, Tail, Deploy,
 }
 
 type Command struct {
