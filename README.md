@@ -20,6 +20,7 @@ The commands are:
 	sysinfo     查看系统信息
 	tail        从文件结尾或指定位置读取内容
 	deploy      快速搭建服务器
+	watchdog	进程守护
 
 Use "wstools help [command]" for more information about a command.
 
@@ -38,5 +39,6 @@ Example:
 	wstools sysinfo
 	wstools tail -f main.go -i 100 -s 200 -o tmp.txt
 	wstools deploy server|client -h
+	wstools watchdog -config watch.ini
 	
 ```
