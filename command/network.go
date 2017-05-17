@@ -108,14 +108,14 @@ func network(cmd *Command, args []string) bool {
 		for _, host := range list {
 			if networkCFG.QuickMode {
 				wait.Add(1)
-				go func() {
+				go func(host string) {
 					if portIsOpen(host, networkCFG.TimeOut) {
 						log.Printf("Host:%s telnet sucess\n", host)
 					} else {
 						log.Printf("Host:%s telnet faild\n", host)
 					}
 					wait.Done()
-				}()
+				}(host)
 			} else {
 				if portIsOpen(host, networkCFG.TimeOut) {
 					log.Printf("Host:%s telnet sucess\n", host)
