@@ -1,4 +1,3 @@
-```
 ## Install:
 ## 	go install -ldflags "-s -w" github.com/czxichen/wstools
 ## 	
@@ -40,5 +39,3 @@ Use "wstools help [command]" for more information about a command.
 	* wstools tail -f main.go -i 100 -s 200 -o tmp.txt
 	* wstools deploy server|client -h
 	* wstools watchdog -config watch.ini
-	
-```
