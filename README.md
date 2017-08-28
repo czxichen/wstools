@@ -1,8 +1,9 @@
-Install:
- 	go install -ldflags "-s -w" github.com/czxichen/wstools	
-Wstools Usage:
- 	wstools [arguments]
-	
+# Install:
+	go install -ldflags "-s -w" github.com/czxichen/wstools
+
+# Wstools Usage:
+	wstools [arguments]
+
 # The commands are:
 	* fileserver  用过http协议传输共享文件
 	* mail        通过smtp协议发送邮件
