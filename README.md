@@ -3,6 +3,7 @@
 
 # Wstools Usage:
 	wstools [arguments]
+	wstools help [command] for more information about a command
 
 # The commands are:
 	* fileserver  用过http协议传输共享文件
@@ -20,8 +21,6 @@
 	* tail        从文件结尾或指定位置读取内容
 	* deploy      快速搭建服务器
 	* watchdog    进程守护
-
-Use "wstools help [command]" for more information about a command.
 
 # Example:
 	* wstools fileserver -d command  -l 192.168.0.2:8080 -i -a
