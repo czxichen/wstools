@@ -1,10 +1,9 @@
-## Install:
-## 	go install -ldflags "-s -w" github.com/czxichen/wstools
-## 	
-## Wstools Usage:
-## 	wstools [arguments]
+Install:
+ 	go install -ldflags "-s -w" github.com/czxichen/wstools	
+Wstools Usage:
+ 	wstools [arguments]
 	
-# ****The commands are:
+# The commands are:
 	* fileserver  用过http协议传输共享文件
 	* mail        通过smtp协议发送邮件
 	* compress    压缩解压文件
@@ -23,7 +22,7 @@
 
 Use "wstools help [command]" for more information about a command.
 
-# ****Example:
+# Example:
 	* wstools fileserver -d command  -l 192.168.0.2:8080 -i -a
 	* wstools mail -u root -p 123456 -F czxichen@163.com -T czxichen@163.com
 	* wstools compress -x -p tmp.zip -o ./
