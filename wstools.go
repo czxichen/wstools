@@ -13,9 +13,22 @@ import (
 	"github.com/czxichen/wstools/command"
 )
 
+var (
+	GitHash, BuildTS string
+)
+
 var commands = command.Commands
 
 func main() {
+	if len(os.Args) > 1 {
+		if os.Args[1] == "-v" || os.Args[1] == "--version" {
+			println("Author: czxichen@163.com")
+			println("GitHash:", GitHash)
+			println("BuildTs:", BuildTS)
+			return
+		}
+	}
+
 	flag.Usage = usage
 	flag.Parse()
 

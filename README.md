@@ -12,6 +12,7 @@
 	* net         检测远程地址或端口是否通
 	* find        根据条件查找文件
 	* md5         计算指定路径的md5值,可以是目录
+	* ssl         使用rsa对证书简单操作
 	* compare     对文件或者目录经进行比较
 	* fsnotify    可以用来监控文件或者目录的变化
 	* ssh         使用ssh协议群发命令或发送文件
@@ -29,6 +30,7 @@
 	* wstools net -a telnet -H 127.0.0.1:80,www.baidu.com:80
 	* wstools find -d "./" -b 20160101 -l 10 -s ".go"
 	* wstools md5 -d "./" -e ".exe"
+	* wstools ssl -n -c cfg.json -o agent
 	* wstools compare -s command -d command_new -c diff
 	* wstools fsnotify -d tools -s scripts.bat
 	* wstools ssh -u root -p 123456 -H 192.168.1.2:22 -s main.go -d /tmp

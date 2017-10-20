@@ -13,7 +13,7 @@ import (
 var Commands = []*Command{
 	FileServer, Mail,
 	Compress, Network,
-	Find, Md5,
+	Find, Md5, SSL,
 	Compare, Fsnotify,
 	SSH, FTP, Replace,
 	SysInfo, Tail, Deploy,
