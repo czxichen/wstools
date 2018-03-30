@@ -1,4 +1,4 @@
-package command
+package common
 
 import (
 	"bufio"
@@ -211,4 +211,48 @@ func GetSystemVersion() string {
 		return ""
 	}
 	return strings.TrimSpace(bufs[2])
+}
+
+//Linux下mode不生效
+func ListDynamicModule(pid uint32, mode ListMode) ([]string, error) {
+	exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("Pid %d 不存在", pid)
+		}
+		return nil, err
+	}
+
+	File, err := os.Open(fmt.Sprintf("/proc/%d/maps", pid))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("Pid %d 不存在", pid)
+		}
+		return nil, err
+	}
+	defer File.Close()
+
+	var maps = make(map[string]struct{})
+	buf := bufio.NewReader(File)
+	for {
+		line, _, err := buf.ReadLine()
+		if err != nil {
+			break
+		}
+		if !bytes.Contains(line, []byte(".so")) {
+			continue
+		}
+
+		lines := bytes.Fields(line)
+		if len(lines) < 6 {
+			continue
+		}
+		maps[string(lines[5])] = struct{}{}
+	}
+	var list = make([]string, 0, len(maps))
+	list = append(list, exe)
+	for k, _ := range maps {
+		list = append(list, k)
+	}
+	return list, nil
 }

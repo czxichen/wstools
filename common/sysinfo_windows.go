@@ -12,8 +12,11 @@ import (
 )
 
 var (
-	advapi = syscall.NewLazyDLL("Advapi32.dll")
-	kernel = syscall.NewLazyDLL("Kernel32.dll")
+	advapi               = syscall.NewLazyDLL("Advapi32.dll")
+	kernel               = syscall.NewLazyDLL("Kernel32.dll")
+	psapi                = syscall.NewLazyDLL("Psapi.dll")
+	enumProcessModulesEx = psapi.NewProc("EnumProcessModulesEx")
+	getModuleFileNameExW = psapi.NewProc("GetModuleFileNameExW")
 )
 
 //开机时间
@@ -193,4 +196,40 @@ func GetBiosInfo() string {
 		return ""
 	}
 	return s[0].Name
+}
+
+func ListDynamicModule(pid uint32, mode ListMode) ([]string, error) {
+	//获取进程句柄
+	var hProcess, err = syscall.OpenProcess(0x0400|0x0010, false, pid)
+	if err != nil {
+		return nil, err
+	}
+
+	//注意关闭句柄
+	defer syscall.CloseHandle(hProcess)
+
+	var (
+		cbNeeded uint32
+		hMods    [1024]uintptr
+	)
+
+	//获取进程打开的模块数
+	r, _, err := enumProcessModulesEx.Call(uintptr(hProcess), uintptr(unsafe.Pointer(&hMods[0])), unsafe.Sizeof(hMods), uintptr(unsafe.Pointer(&cbNeeded)), uintptr(mode))
+	if r == 0 {
+		return nil, err
+	}
+
+	//计算模块数量
+	var modelength = int(cbNeeded) / int(unsafe.Sizeof(hMods[0]))
+	var szModName [260]uint16
+	var list = make([]string, 0, modelength)
+
+	for i := 0; i < modelength; i++ {
+		r, _, err = getModuleFileNameExW.Call(uintptr(hProcess), hMods[i], uintptr(unsafe.Pointer(&szModName)), unsafe.Sizeof(szModName))
+		if r == 0 {
+			return list, err
+		}
+		list = append(list, syscall.UTF16ToString(szModName[:]))
+	}
+	return list, nil
 }
