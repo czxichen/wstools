@@ -1,11 +1,12 @@
 GOBUILD=go build -v
+BuildTS=$(shell go run script/buildcmd.go time)
 
 LDFLAGS += -X "main.GitHash=$(shell git rev-parse HEAD)"
-LDFLAGS += -X "main.BuildTS=$(shell go run script/buildcmd.go time)"
+LDFLAGS += -X "main.BuildTS=$(BuildTS)"
 
 all: build
 
-.PHONY : clean deps build
+.PHONY : clean build
 
-build: deps 
+build:  
 	$(GOBUILD) -ldflags '-s -w $(LDFLAGS)'
