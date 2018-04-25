@@ -11,37 +11,65 @@ import (
 
 	"github.com/czxichen/command/watchdog"
 	conf "github.com/dlintw/goconf"
+	"github.com/spf13/cobra"
 )
 
-var Watchdog = &Command{
-	UsageLine: `watchdog -config watch.ini`,
-	Run:       watchdogrun,
-	Short:     "进程守护",
-	Long: `用来监控进程,可以带依赖模式监控
-	watchdog -config watch.ini
-`,
+var Watchdog = &cobra.Command{
+	Use:     `watchdog`,
+	Example: "-c watch.ini",
+	RunE:    watchdog_run,
+	Short:   "进程守护",
+	Long:    `用来监控进程,可以带依赖模式监控`,
 }
-var logpath, configFile string
+
+type watchdog_config struct {
+	logpath    string
+	configFile string
+	createcfg  bool
+}
+
+var _watchdog watchdog_config
 
 func init() {
-	Watchdog.Flag.StringVar(&logpath, "log_path", "", "Specify log path")
-	Watchdog.Flag.StringVar(&configFile, "config", "watchdog.ini", "Watchdog configuration file")
+	Watchdog.PersistentFlags().BoolVarP(&_watchdog.createcfg, "createcfg", "C", false, "创建配置样例文件")
+	Watchdog.PersistentFlags().StringVarP(&_watchdog.logpath, "log", "l", "watchdog.log", "指定log输出到文件")
+	Watchdog.PersistentFlags().StringVarP(&_watchdog.configFile, "config", "c", "watchdog.ini", "指定watchdog的配置文件")
 }
 
-func watchdogrun(cmd *Command, args []string) bool {
-	if logpath == "" {
-		logpath = "watchdog.log"
-	}
-	logFile, err := os.Create(logpath)
+func watchdog_run(cmd *cobra.Command, args []string) error {
+	logFile, err := os.Create(_watchdog.logpath)
 	if err != nil {
-		log.Fatalf("Create log file error:%s\n", err.Error())
+		log.Fatalf("创建日志文件失败:%s\n", err.Error())
 	}
+
 	defer logFile.Close()
 	log.SetOutput(logFile)
 
-	cfg, err := conf.ReadConfigFile(configFile)
+	if _watchdog.createcfg {
+		File, err := os.Create(_watchdog.configFile)
+		if err != nil {
+			log.Fatalf("创建配置示例文件失败:%s\n", err.Error())
+		}
+		File.WriteString(`[Srv_01]
+binary = binarypath
+args = arg01
+user = root
+term_timeout = 10s
+priority = -10 
+
+[Srv_02]
+binary = binarypath
+args = arg01 arg02
+user = root
+term_timeout = 10s
+priority = -10
+dependency =  Srv_01`)
+		File.Close()
+		return nil
+	}
+	cfg, err := conf.ReadConfigFile(_watchdog.configFile)
 	if err != nil {
-		log.Fatalf("Failed to read config file %q: %v", configFile, err)
+		log.Fatalf("读取配置文件失败 %q: %v", _watchdog.configFile, err)
 	}
 
 	fido := watchdog.NewWatchdog()
@@ -55,7 +83,7 @@ func watchdogrun(cmd *Command, args []string) bool {
 
 		svc, err := fido.AddService(name, binary)
 		if err != nil {
-			log.Fatalf("Failed to add service %q: %v", name, err)
+			log.Fatalf("添加服务失败 %q: %v", name, err)
 		}
 		svc.AddArgs(args)
 		if dep := svcOpt(cfg, name, "dependency", false); dep != "" {
@@ -64,28 +92,28 @@ func watchdogrun(cmd *Command, args []string) bool {
 		if opt := svcOpt(cfg, name, "priority", false); opt != "" {
 			prio, err := strconv.Atoi(opt)
 			if err != nil {
-				log.Fatalf("Service %s has invalid priority %q: %v", name, opt, err)
+				log.Fatalf("服务 %s 设置了无效的优先级 %q: %v", name, opt, err)
 			}
 			if err := svc.SetPriority(prio); err != nil {
-				log.Fatalf("Failed to set priority for service %s: %v", name, err)
+				log.Fatalf("设置服务优先级失败 %s: %v", name, err)
 			}
 		}
 		if opt := svcOpt(cfg, name, "term_timeout", false); opt != "" {
 			tt, err := time.ParseDuration(opt)
 			if err != nil {
-				log.Fatalf("Service %s has invalid term_timeout %q: %v", name, opt, err)
+				log.Fatalf("服务 %s 设置了无效的退出超时时间 %q: %v", name, opt, err)
 			}
 			svc.SetTermTimeout(tt)
 		}
 
 		if user := svcOpt(cfg, name, "user", false); user != "" {
 			if err := svc.SetUser(user); err != nil {
-				log.Fatalf("Failed to set user for service %s: %v", name, err)
+				log.Fatalf("设置服务用户失败 %s: %v", name, err)
 			}
 		}
 	}
 	fido.Walk()
-	return true
+	return nil
 }
 
 func cfgOpt(cfg *conf.ConfigFile, section, option string) string {

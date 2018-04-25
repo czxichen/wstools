@@ -1,196 +1,202 @@
 package command
 
 import (
-	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"log"
+	"math"
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
+	"strconv"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
-var (
-	findCFG = &findinfo{}
-	Find    = &Command{
-		UsageLine: `find -d "./" -b "20160101" -l 10 -s ".go"`,
-		Run:       find,
-		Short:     "根据条件查找文件",
-		Long: `所有条件都是and关系,比如-b "20160101" -l 10 -s ".go"表示必须同时满足这个三个
-条件,才算匹配成功
-`,
-	}
-)
+var Find = &cobra.Command{
+	Use: "find",
+	Example: `	查找./下小于1MB的文件
+	-p ./ -s "-1M"
+	查找./目录下,修改时间在一天内且大于1MB的文件
+	-p ./ -s "1M" -m "-1d"`,
+	Short: "文件查找",
+	Long:  "按名称,时间,大小查找文件",
+	RunE:  find_run,
+}
+
+type find_config struct {
+	dir   bool
+	path  string
+	name  string
+	size  string
+	mtime string
+}
+
+var _find find_config
 
 func init() {
-	Find.Flag.StringVar(&findCFG.dir, "d", "", `-d="dirpath" 指定查找的目录`)
-	Find.Flag.StringVar(&findCFG.prefix, "p", "", `-p="prefix" 搜索条件,表示查找此字符串开头的文件`)
-	Find.Flag.StringVar(&findCFG.suffix, "s", "", `-s="suffix" 搜索条件,表示查找此字符串结尾的文件`)
-	Find.Flag.StringVar(&findCFG.after, "a", "", `-a="20160101" 搜索条件,表示文件修改日期在这个时间之后`)
-	Find.Flag.StringVar(&findCFG.befer, "b", "", `-b="20161231" 搜索条件,表示文件修改日期在这个时间之前`)
-	Find.Flag.Int64Var(&findCFG.ltsize, "l", 0, `-l=1024 搜索条件,表示文件大小小于1024k`)
-	Find.Flag.Int64Var(&findCFG.gtsize, "g", 0, `-g=1024 搜索条件,表示文件大小大于1k`)
-	Find.Flag.BoolVar(&findCFG.all, "A", true, "-A=false 搜索条件,表示是否搜索目录下的所有子目录")
-	Find.Flag.StringVar(&findCFG.output, "o", "", `-o="log" 指定结果文件`)
+	Find.PersistentFlags().BoolVarP(&_find.dir, "dir", "d", false, "是否启用查找目录")
+	Find.PersistentFlags().StringVarP(&_find.path, "path", "p", "", "查找的路径")
+	Find.PersistentFlags().StringVarP(&_find.name, "name", "n", "", "按照名称正则查找文件")
+	Find.PersistentFlags().StringVarP(&_find.size, "size", "s", "", "按照大小查找文件,单位(K,M,G不分大小写),不带单位默认字节")
+	Find.PersistentFlags().StringVarP(&_find.mtime, "mtime", "m", "", "按照修改时间查找文件,单位(M,H,d,m,y区分大小写),不带单位默认为秒")
 }
 
-func find(cmd *Command, args []string) bool {
-	if findCFG.dir == "" {
-		return false
-	}
-	var w = os.Stdout
-	defer w.Close()
-	if findCFG.output != "" {
-		var err error
-		w, err = os.Create(findCFG.output)
-		if err != nil {
-			log.Printf("创建输出文件失败:", err.Error())
-			return true
-		}
-	}
-	err := findCFG.Find(w)
-	if err != nil {
-		log.Println(err)
-	}
-	return true
-}
-
-type findinfo struct {
-	output          string
-	fix, date, size bool
-	all             bool
-	dir             string
-	btime           int64
-	befer           string
-	atime           int64
-	after           string
-	gtsize          int64
-	ltsize          int64
-	suffix          string
-	prefix          string
-}
-
-func (find *findinfo) init() error {
-	dir := strings.Replace(find.dir, "\\", "/", -1)
-	if !strings.HasSuffix(dir, "/") {
-		dir += "/"
-	}
-	if find.befer != "" {
-		t, err := time.Parse("20060102", find.befer)
-		if err != nil {
-			return errors.New("date format invalid")
-		}
-		find.btime = t.Unix()
-		find.date = true
+func find_run(cmd *cobra.Command, args []string) error {
+	if _find.path == "" {
+		return fmt.Errorf("必须指定查找的路径")
 	}
 
-	if find.after != "" {
-		t, err := time.Parse("20060102", find.after)
-		if err != nil {
-			return errors.New("date format invalid")
-		}
-		find.atime = t.Unix()
-		find.date = true
-	}
+	var (
+		err   error
+		name  *regexp.Regexp
+		size  *size_match
+		mtime *time_match
+	)
 
-	if find.gtsize > 0 || find.ltsize > 0 {
-		find.gtsize *= 1024
-		find.ltsize *= 1024
-		find.size = true
-	}
-
-	if find.prefix != "" || find.suffix != "" {
-		find.fix = true
-	}
-	return nil
-}
-
-func (find *findinfo) Find(w io.Writer) error {
-	if err := find.init(); err != nil {
-		return err
-	}
-	if find.all {
-		find.walkdir(w)
-	} else {
-		find.dirs(w)
-	}
-	return nil
-}
-
-func (find *findinfo) math(file os.FileInfo) bool {
-	switch {
-	case find.fix:
-		if find.suffix != "" {
-			if !strings.HasSuffix(file.Name(), find.suffix) {
-				return false
-			}
-		}
-		if find.prefix != "" {
-			if !strings.HasPrefix(file.Name(), find.prefix) {
-				return false
-			}
-		}
-		fallthrough
-	case find.date:
-		t := file.ModTime().Unix()
-		if find.atime > 0 {
-			if t < find.atime {
-				return false
-			}
-		}
-		if find.btime > 0 {
-			if t > find.btime {
-				return false
-			}
-		}
-		fallthrough
-	case find.size:
-		if find.gtsize > 0 {
-			if find.gtsize > file.Size() {
-				return false
-			}
-		}
-		if find.ltsize > 0 {
-			if find.ltsize < file.Size() {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func (find *findinfo) dirs(w io.Writer) {
-	list, err := ioutil.ReadDir(find.dir)
-	if err != nil {
-		log.Println(err)
-		return
-	}
-	for _, info := range list {
-		if info.IsDir() {
-			continue
-		}
-		if find.math(info) {
-			fmt.Fprintln(w, info.Name())
-		}
-	}
-}
-
-func (find *findinfo) walkdir(w io.Writer) {
-	err := filepath.Walk(find.dir, func(path string, info os.FileInfo, err error) error {
+	if _find.name != "" {
+		name, err = regexp.Compile(_find.name)
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
+	}
+
+	if _find.size != "" {
+		size, err = parse_size(_find.size)
+		if err != nil {
+			return err
+		}
+	}
+
+	if _find.mtime != "" {
+		mtime, err = parse_mtime(_find.mtime)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = filepath.Walk(_find.path, func(root string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() && !_find.dir {
 			return nil
 		}
-		if find.math(info) {
-			fmt.Fprintln(w, path)
+
+		if name != nil {
+			if !name.MatchString(info.Name()) {
+				return nil
+			}
 		}
+
+		if size != nil {
+			if !size.Match(info.Size()) {
+				return nil
+			}
+		}
+		if mtime != nil {
+			if !mtime.Match(info.ModTime()) {
+				return nil
+			}
+		}
+		fmt.Printf("%s\n", root)
 		return nil
 	})
 	if err != nil {
-		log.Println(err)
+		fmt.Printf("文件查找失败:%s\n", err.Error())
 	}
+	return nil
+}
+
+type time_match struct {
+	less bool
+	time time.Time
+}
+
+func (t *time_match) Match(mtime time.Time) bool {
+	if t.less {
+		return t.time.Before(mtime)
+	} else {
+		return t.time.After(mtime)
+	}
+}
+
+func parse_mtime(mtime string) (*time_match, error) {
+	var (
+		count time.Duration
+		unit  = mtime[len(mtime)-1]
+	)
+
+	switch unit {
+	default:
+		count = 1
+		mtime += "s"
+	case 'M':
+		count = time.Minute
+	case 'H':
+		count = time.Hour
+	case 'd':
+		count = time.Hour * 24
+	case 'm':
+		count = time.Hour * 24 * 30
+	case 'y':
+		count = time.Hour * 24 * 30 * 365
+	}
+	var t = &time_match{less: false, time: time.Now()}
+	mtime = mtime[:len(mtime)-1]
+	nctime, err := strconv.Atoi(mtime)
+	if err != nil {
+		return t, err
+	}
+	t.less = nctime < 0
+	t.time = time.Now().Add(^(time.Duration(math.Abs(float64(nctime))) * count))
+	return t, nil
+}
+
+type size_match struct {
+	less bool
+	size int64
+}
+
+func (s *size_match) Match(size int64) bool {
+	if s.less {
+		return size <= s.size
+	} else {
+		return size >= s.size
+	}
+}
+
+func parse_size(size string) (*size_match, error) {
+	var (
+		count int64
+		unit  = size[len(size)-1]
+	)
+
+	switch unit {
+	default:
+		count = 1
+		size += "b"
+	case 'K', 'k':
+		count = 1024
+	case 'M', 'm':
+		count = 1024 * 1024
+	case 'G', 'g':
+		count = 1024 * 1024 * 1024
+	}
+
+	var match size_match
+	size = size[:len(size)-1]
+	nsize, err := strconv.Atoi(size)
+	if err != nil {
+		return &match, err
+	}
+
+	if nsize < 0 {
+		match.less = true
+		match.size = int64(math.Abs(float64(nsize))) * count
+	} else {
+		match.less = false
+		match.size = int64(nsize) * count
+	}
+	return &match, nil
 }

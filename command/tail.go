@@ -3,16 +3,18 @@ package command
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
-	"log"
 	"os"
 	"strconv"
 	"sync"
+
+	"github.com/spf13/cobra"
 )
 
 const readbuf = 1 << 10 //1024
 
-type flags struct {
+type tail_config struct {
 	line   int
 	lines  int
 	size   string
@@ -21,38 +23,39 @@ type flags struct {
 	file   string
 }
 
-var args flags
-
-func init() {
-	Tail.Flag.StringVar(&args.output, "o", "", "-o 指定输出的路径,不指定则输出到标准输出")
-	Tail.Flag.IntVar(&args.line, "l", 0, "-l 指定从倒数第几行开始读取")
-	Tail.Flag.IntVar(&args.lines, "n", 0, "-n 指定读取的行数")
-	Tail.Flag.StringVar(&args.offset, "i", "", "-i 指定开始读取的位置,单位:b,kb,mb,默认单位:b")
-	Tail.Flag.StringVar(&args.size, "s", "", "-s 指定读取的大小,单位:b,kb,mb,默认单位:b")
-	Tail.Flag.StringVar(&args.file, "f", "", "-f 指定要查看的文件路径")
-}
-
-var Tail = &Command{
-	UsageLine: `tail -f main.go -l 10 -n 5 -o tmp.txt`,
-	Run:       tail,
-	Short:     "从文件结尾或指定位置读取内容",
+var Tail = &cobra.Command{
+	Use:  `tail`,
+	RunE: tail_run,
+	Example: `	-f main.go -l 10 -n 5 -o tmp.txt`,
+	Short: "从文件尾部操作文件",
 	Long: `从文件结尾或指定位置读取内容,可以按行读取,也可以按大小读取,-i 和 -l同时使用的话-i生效,-s 与 -n 
 同时使用的话-s生效
 `,
 }
 
-func tail(cmd *Command, arg []string) bool {
-	File, err := os.OpenFile(args.file, os.O_RDONLY, 0644)
+var _tail tail_config
+
+func init() {
+	Tail.PersistentFlags().StringVarP(&_tail.output, "output", "o", "", "-o 指定输出的路径,不指定则输出到标准输出")
+	Tail.PersistentFlags().IntVarP(&_tail.line, "line", "l", 0, "-l 指定从倒数第几行开始读取")
+	Tail.PersistentFlags().IntVarP(&_tail.lines, "number", "n", 0, "-n 指定读取的行数")
+	Tail.PersistentFlags().StringVarP(&_tail.offset, "index", "i", "", "-i 指定开始读取的位置,单位:b,kb,mb,默认单位:b")
+	Tail.PersistentFlags().StringVarP(&_tail.size, "size", "s", "", "-s 指定读取的大小,单位:b,kb,mb,默认单位:b")
+	Tail.PersistentFlags().StringVarP(&_tail.file, "file", "f", "", "-f 指定要查看的文件路径")
+}
+
+func tail_run(cmd *cobra.Command, arg []string) error {
+	File, err := os.OpenFile(_tail.file, os.O_RDONLY, 0644)
 	if err != nil {
-		log.Printf("打开文件失败:%s\n", err.Error())
-		return true
+		fmt.Printf("打开文件失败:%s\n", err.Error())
+		return nil
 	}
 	var w io.WriteCloser
-	if args.output != "" {
-		w, err = os.Create(args.output)
+	if _tail.output != "" {
+		w, err = os.Create(_tail.output)
 		if err != nil {
-			log.Printf("创建输出文件失败:%s\n", err.Error())
-			return true
+			fmt.Printf("创建输出文件失败:%s\n", err.Error())
+			return nil
 		}
 		defer w.Close()
 	} else {
@@ -61,24 +64,24 @@ func tail(cmd *Command, arg []string) bool {
 	f := NewTail(File)
 	defer f.Close()
 
-	if args.offset != "" {
-		offset := parseCompany(args.offset)
-		size := parseCompany(args.size)
-		if size == 0 && int64(args.lines) == 0 {
-			return false
+	if _tail.offset != "" {
+		offset := parseCompany(_tail.offset)
+		size := parseCompany(_tail.size)
+		if size == 0 && int64(_tail.lines) == 0 {
+			return nil
 		}
-		if err = f.Read(offset, size, int64(args.lines), w); err != nil {
-			log.Printf("读取内容错误:%s\n", err.Error())
+		if err = f.Read(offset, size, int64(_tail.lines), w); err != nil {
+			fmt.Printf("读取内容错误:%s\n", err.Error())
 		}
-		return true
+		return nil
 	}
-	if args.line > 0 {
-		if err = f.TailLine(args.line, args.lines, w); err != nil {
-			log.Printf("读取内容错误:%s\n", err.Error())
+	if _tail.line > 0 {
+		if err = f.TailLine(_tail.line, _tail.lines, w); err != nil {
+			fmt.Printf("读取内容错误:%s\n", err.Error())
 		}
-		return true
+		return nil
 	}
-	return false
+	return nil
 }
 
 func parseCompany(c string) int64 {

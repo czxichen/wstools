@@ -1,0 +1,9 @@
+//这个支持双斜杠注释.
+{
+	"ip":":1789",  //监听的网卡
+	"proto":"http", //使用的协议如果使用https就必须指定 crt和key
+	"crtpath":"", //当proto是https的时候生效
+	"keypath":"", //当proto是https的时候生效
+	"logname":"server.log", //指定日志的名称
+	"download":"./download" //指定http的家目录.
+}

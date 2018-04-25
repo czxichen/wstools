@@ -1,118 +1,120 @@
 package command
 
 import (
+	"bufio"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh"
 )
 
 var (
-	lgInfoCFG lgInfo
-	SSH       = &Command{
-		UsageLine: `ssh -c ls -u root -p 123456 -h 192.168.1.2:22`,
-		Run:       lginfo,
-		Short:     "使用ssh协议群发命令或发送文件",
-		Long: `通过ssh协议群发命令,每个命令发送都是新的session,当从文件读取主机地址和账户密码的时候,格式
-为IP:PORT USERNAME PASSWD,使用空白分割,-u -p -H 参数不生效,当发送文件的时候目标的地址可以是目录,当是目
-录的时候保存的文件名,保存为发送的文件名称.
-	wstools ssh -C iplist -c ls
-	wstools ssh -C iplist -s main.go -d /tmp
-	wstools ssh -c ls -u root -p 123456 -H 192.168.1.2:22
-	wstools ssh -u root -p 123456 -H 192.168.1.2:22 -s main.go -d /tmp
-`,
+	_ssh ssh_config
+	Ssh  = &cobra.Command{
+		Use: `ssh`,
+		Example: `	-C iplist -c ls
+	-C iplist -s main.go -d /tmp
+	-c ls -u root -p 123456 -H 192.168.1.2:22
+	-u root -p 123456 -H 192.168.1.2:22 -s main.go -d /tmp`,
+		RunE:  ssh_run,
+		Short: "使用ssh协议群发命令或发送文件",
+		Long: `	通过ssh协议群发命令,每个命令发送都是新的session,当从文件读取主机地址和账户密码的时候,格式为IP:PORT USERNAME PASSWD,使用空白分割,-u -p -H 参数不生效,当发送文件的时候目标的地址可以是目录,当是目录的时候保存的文件名,保存为发送的文件名称.`,
 	}
 )
 
-type lgInfo struct {
+type ssh_config struct {
 	config, out  string
 	hosts, cmd   string
 	sfile, dpath string
 	user, passwd string
+	timeout      int
 }
 
 func init() {
-	SSH.Flag.StringVar(&lgInfoCFG.config, "C", "", `-C="iplist.txt" 从文件读取主机列表和账户密码`)
-	SSH.Flag.StringVar(&lgInfoCFG.cmd, "c", "", `-c="ls -a" 要执行的命令`)
-	SSH.Flag.StringVar(&lgInfoCFG.hosts, "H", "", `-H="192.164.1.2:22" 指定Host,多个地址可使用','分割`)
-	SSH.Flag.StringVar(&lgInfoCFG.sfile, "s", "", `-s=md5.sh 指定要发送文件的路径`)
-	SSH.Flag.StringVar(&lgInfoCFG.dpath, "d", "", `-d="/tmp/md5.sh" 指定文件保存路径`)
-	SSH.Flag.StringVar(&lgInfoCFG.user, "u", "", `-u="root" 指定登录的用户`)
-	SSH.Flag.StringVar(&lgInfoCFG.passwd, "p", "", `-p="passwd" 指定登录用户密码`)
-	SSH.Flag.StringVar(&lgInfoCFG.out, "o", "", `-o="result" 指定结果输出文件`)
+	Ssh.PersistentFlags().StringVarP(&_ssh.config, "hosts", "C", "", `从文件读取主机列表和账户密码`)
+	Ssh.PersistentFlags().StringVarP(&_ssh.cmd, "cmd", "c", "", `要执行的命令`)
+	Ssh.PersistentFlags().StringVarP(&_ssh.hosts, "host", "H", "", `指定Host,多个地址可使用','分割`)
+	Ssh.PersistentFlags().StringVarP(&_ssh.sfile, "src", "s", "", `指定要发送文件的路径`)
+	Ssh.PersistentFlags().StringVarP(&_ssh.dpath, "dst", "d", "", `指定文件保存路径`)
+	Ssh.PersistentFlags().StringVarP(&_ssh.user, "user", "u", "", `指定登录的用户`)
+	Ssh.PersistentFlags().StringVarP(&_ssh.passwd, "passwd", "p", "", `指定登录用户密码`)
+	Ssh.PersistentFlags().StringVarP(&_ssh.out, "out", "o", "", `指定结果输出文件,不指定则直接输出到标准输出`)
+	Ssh.PersistentFlags().IntVarP(&_ssh.timeout, "timeout", "t", 30, `指定连接超时时间`)
 }
 
-func lginfo(cmd *Command, arg []string) bool {
+func ssh_run(cmd *cobra.Command, arg []string) error {
 	var host []string
 	var hosts [][]string
 
-	if lgInfoCFG.hosts == "" && lgInfoCFG.config == "" {
-		return false
+	if _ssh.hosts == "" && _ssh.config == "" {
+		return fmt.Errorf("参数错误,必须指定主机地址")
 	} else {
-		if lgInfoCFG.hosts != "" {
-			host = strings.Split(lgInfoCFG.hosts, ",")
+		if _ssh.hosts != "" {
+			host = strings.Split(_ssh.hosts, ",")
 		} else {
 			var err error
-			hosts, err = FileLine(lgInfoCFG.config, 3)
+			hosts, err = FileLine(_ssh.config, 3)
 			if err != nil {
-				log.Println("读取主机列表失败,", err.Error())
-				return true
+				fmt.Printf("读取主机列表失败,%s\n", err.Error())
+				return nil
 			}
 		}
 		if len(host) <= 0 && len(hosts) <= 0 {
-			return false
+			fmt.Println("主机列表为空")
+			return nil
 		}
 	}
 
 	var output = os.Stdout
 	defer output.Close()
 
-	if lgInfoCFG.out != "" {
+	if _ssh.out != "" {
 		var err error
-		output, err = os.Create(lgInfoCFG.out)
+		output, err = os.Create(_ssh.out)
 		if err != nil {
-			log.Println("创建结果文件失败:", err)
-			return true
+			fmt.Printf("创建结果文件失败:%s\n", err.Error())
+			return nil
 		}
 	}
-	if lgInfoCFG.cmd == "" && (lgInfoCFG.sfile == "" || lgInfoCFG.dpath == "") {
-		return false
+	if _ssh.cmd == "" && (_ssh.sfile == "" || _ssh.dpath == "") {
+		return fmt.Errorf("参数错误")
 	}
 
 	wait := new(sync.WaitGroup)
 	if host != nil {
-		if lgInfoCFG.user == "" || lgInfoCFG.passwd == "" {
-			return false
+		if _ssh.user == "" || _ssh.passwd == "" {
+			return fmt.Errorf("必须指定用户名,密码")
 		}
 
 		for _, h := range host {
-			c := newsshInfo(lgInfoCFG.user, lgInfoCFG.passwd, h)
+			c := newsshInfo(_ssh.user, _ssh.passwd, h, _ssh.timeout)
 			wait.Add(1)
-			if lgInfoCFG.cmd != "" {
-				go sendcommand(lgInfoCFG.cmd, wait, c, output)
+			if _ssh.cmd != "" {
+				go sendcommand(_ssh.cmd, wait, c, output)
 			} else {
-				go sendfile(lgInfoCFG.sfile, lgInfoCFG.dpath, wait, c, output)
+				go sendfile(_ssh.sfile, _ssh.dpath, wait, c, output)
 			}
 		}
 	} else {
 		for _, info := range hosts {
-			c := newsshInfo(info[1], info[2], info[0])
+			c := newsshInfo(info[1], info[2], info[0], _ssh.timeout)
 			wait.Add(1)
-			if lgInfoCFG.cmd != "" {
-				go sendcommand(lgInfoCFG.cmd, wait, c, output)
+			if _ssh.cmd != "" {
+				go sendcommand(_ssh.cmd, wait, c, output)
 			} else {
-				go sendfile(lgInfoCFG.sfile, lgInfoCFG.dpath, wait, c, output)
+				go sendfile(_ssh.sfile, _ssh.dpath, wait, c, output)
 			}
 		}
 	}
 	wait.Wait()
-	return true
+	return nil
 }
 
 func sendcommand(cmd string, wait *sync.WaitGroup, c *sshInfof, w io.Writer) {
@@ -129,6 +131,7 @@ func sendcommand(cmd string, wait *sync.WaitGroup, c *sshInfof, w io.Writer) {
 
 	fmt.Fprintf(w, "%s执行结果:\n%s\n", c.host, string(buf))
 }
+
 func sendfile(sfile, dpath string, wait *sync.WaitGroup, c *sshInfof, w io.Writer) {
 	defer wait.Done()
 	err := c.SendFile(sfile, dpath)
@@ -142,11 +145,15 @@ func sendfile(sfile, dpath string, wait *sync.WaitGroup, c *sshInfof, w io.Write
 	fmt.Fprintf(w, "%s发送文件成功 \n", c.host)
 }
 
-func newsshInfo(user, passwd, host string) *sshInfof {
+func newsshInfo(user, passwd, host string, timeout int) *sshInfof {
 	cfg := &ssh.ClientConfig{
 		User: user,
 		Auth: []ssh.AuthMethod{
 			ssh.Password(passwd),
+		},
+		Timeout: time.Duration(timeout) * time.Second,
+		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+			return nil
 		},
 	}
 	return &sshInfof{host: host, config: cfg}
@@ -159,7 +166,7 @@ type sshInfof struct {
 }
 
 func (info *sshInfof) Dial() (err error) {
-	info.client, err = ssh.DialTimeOut("tcp", info.host, 30, info.config)
+	info.client, err = ssh.Dial("tcp", info.host, info.config)
 	return
 }
 
@@ -212,5 +219,30 @@ func (info *sshInfof) SendFile(file, dirpath string) error {
 func (info *sshInfof) Close() {
 	if info.client != nil {
 		info.client.Close()
+	}
+}
+
+func FileLine(path string, count int) ([][]string, error) {
+	File, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer File.Close()
+	var list [][]string
+	buf := bufio.NewReader(File)
+	for {
+		line, _, err := buf.ReadLine()
+		if err != nil {
+			if err != io.EOF {
+				return list, err
+			}
+			return list, nil
+		}
+		l := strings.Fields(string(line))
+		if len(l) == count {
+			list = append(list, l)
+		} else {
+			fmt.Printf("无效的数据:%s\n", string(line))
+		}
 	}
 }

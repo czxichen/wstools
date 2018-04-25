@@ -6,69 +6,67 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
-type ftpcfg struct {
-	get    bool
-	host   string
-	user   string
-	rpath  string
-	lpath  string
-	passwd string
+var Ftp = &cobra.Command{
+	Use: "ftp",
+	Example: `	下载远程/tmp/main.go文件到./目录下
+	-D -u root -p toor -d /server/Res/scenes.ini -s nima -H  127.0.0.1:21
+	上传文件到/Server/main.go
+	-u root -p toor -s main.go -d /Server/main.go -H 127.0.0.1:21`,
+	Short: "FTP上传下载",
+	Long:  "使用简单的FTP协议实现文件的上传下载",
+	RunE:  ftp_run,
 }
 
-var (
-	ftpCFG = ftpcfg{}
-	FTP    = &Command{
-		UsageLine: `ftp -l main.go -r /mnt/main.go`,
-		Run:       ftpclient,
-		Short:     "使用ftp协议下载或上传文件",
-		Long: `实现用的是PASV模式,上传或这下载文件路径不能是目录,
-	wstools ftp -l main.go -r /mnt/main.go
-	wstools ftp -l main.go -r /mnt/main.go -g false
-`,
-	}
-)
+type ftp_config struct {
+	Host        string
+	User        string
+	Passwd      string
+	Source      string
+	Destination string
+	Download    bool
+}
+
+var _ftp ftp_config
 
 func init() {
-	FTP.Flag.StringVar(&ftpCFG.host, "H", "", `-H="127.0.0.1:21" 指定ftp主机地址`)
-	FTP.Flag.StringVar(&ftpCFG.user, "u", "", `-u="root" 指定登录的用户名称`)
-	FTP.Flag.StringVar(&ftpCFG.passwd, "p", "", `-p=" 指定登录用户的密码"`)
-	FTP.Flag.StringVar(&ftpCFG.lpath, "l", "", `-l="main.go" 本地文件路径`)
-	FTP.Flag.StringVar(&ftpCFG.rpath, "r", "", `-d="/main.go" 远程文件路径`)
-	FTP.Flag.BoolVar(&ftpCFG.get, "g", true, `-g=false 当指定值为false的时候,表示上传文件`)
+	Ftp.PersistentFlags().StringVarP(&_ftp.Host, "host", "H", "", "指定ftp地址端口,不能为空")
+	Ftp.PersistentFlags().StringVarP(&_ftp.User, "user", "u", "", "指定登录的用户名,不能为空")
+	Ftp.PersistentFlags().StringVarP(&_ftp.Passwd, "passwd", "p", "", "指定登录的用户密码,不能为空")
+	Ftp.PersistentFlags().StringVarP(&_ftp.Source, "source", "s", "", "指定原始文件路径,不能为空")
+	Ftp.PersistentFlags().StringVarP(&_ftp.Destination, "destination", "d", "", "指定目标文件路径,不能为空")
+	Ftp.PersistentFlags().BoolVarP(&_ftp.Download, "download", "D", false, "从ftp上下载文件")
 }
 
-func ftpclient(cmd *Command, args []string) bool {
-	if ftpCFG.lpath == "" || ftpCFG.rpath == "" {
-		return false
+func ftp_run(cmd *cobra.Command, args []string) error {
+	if _ftp.Host == "" || _ftp.User == "" || _ftp.Passwd == "" || _ftp.Source == "" || _ftp.Destination == "" {
+		return fmt.Errorf("参数错误")
 	}
 
-	if ftpCFG.host != "" && ftpCFG.user != "" && ftpCFG.passwd != "" {
-		f, err := newFTP(ftpCFG.host, ftpCFG.user, ftpCFG.passwd)
-		if err == nil {
-			defer f.Exit()
-			if ftpCFG.get {
-				err = f.GetFile(ftpCFG.lpath, ftpCFG.rpath)
-			} else {
-				err = f.PutFile(ftpCFG.lpath, ftpCFG.rpath)
-			}
-		}
-		if err != nil {
-			log.Println(err)
-		}
-		return true
+	conn, err := newFTP(_ftp.Host, _ftp.User, _ftp.Passwd)
+	if err != nil {
+		fmt.Printf("登录失败:%s\n", err.Error())
+		return nil
 	}
-
-	return false
+	if _ftp.Download {
+		err = conn.GetFile(_ftp.Source, _ftp.Destination)
+	} else {
+		err = conn.PutFile(_ftp.Source, _ftp.Destination)
+	}
+	if err != nil {
+		fmt.Printf("文件传输失败:%s\n", err.Error())
+	}
+	return nil
 }
 
-func newFTP(ip, user, pass string) (*ftp, error) {
+func newFTP(ip, user, pass string) (*ftplogin, error) {
 	con, err := net.Dial("tcp", ip)
 	if err != nil {
 		return nil, err
@@ -84,65 +82,72 @@ func newFTP(ip, user, pass string) (*ftp, error) {
 			continue
 		}
 		if bytes.HasPrefix(line, []byte("530")) {
-			log.Print(string(line))
+			fmt.Print(string(line))
 		}
 		if bytes.HasPrefix(line, []byte("230")) {
-			log.Printf(string(line))
+			fmt.Printf(string(line))
 			break
 		}
 	}
-	return &ftp{con, ip}, nil
+	return &ftplogin{con, ip}, nil
 }
 
-type ftp struct {
+type ftplogin struct {
 	con net.Conn
 	ip  string
 }
 
-func (self *ftp) PutFile(lpath, rpath string) error {
+func (self *ftplogin) PutFile(lpath, rpath string) error {
 	con, err := self.connection("STOR", rpath)
 	if err != nil {
 		return err
 	}
+	defer con.Close()
 	File, err := os.Open(lpath)
 	if err != nil {
-		con.Close()
 		return err
 	}
-	io.Copy(con, File)
-	con.Close()
-	File.Close()
+	defer File.Close()
+	_, err = io.Copy(con, File)
+	if err != nil {
+		return err
+	}
 
 	buf := make([]byte, 1024)
 	n, err := self.con.Read(buf)
 	if err == nil {
-		log.Print(string(buf[:n]))
+		fmt.Print(string(buf[:n]))
 	}
 	return err
 }
 
-func (self *ftp) GetFile(lpath, rpath string) error {
+func (self *ftplogin) GetFile(lpath, rpath string) error {
 	con, err := self.connection("RETR", rpath)
 	if err != nil {
 		return err
 	}
+
+	defer con.Close()
 	File, err := os.Create(lpath)
 	if err != nil {
-		con.Close()
 		return err
 	}
-	io.Copy(File, con)
-	File.Close()
-	con.Close()
+
+	defer File.Close()
+	_, err = io.Copy(File, con)
+	if err != nil {
+		return err
+	}
+
 	buf := make([]byte, 1024)
 	n, err := self.con.Read(buf)
 	if err == nil {
-		log.Print(string(buf[:n]))
+		fmt.Print(string(buf[:n]))
 	}
 	return err
 }
 
-func (self *ftp) connection(status, Pathname string) (net.Conn, error) {
+func (self *ftplogin) connection(status, Pathname string) (net.Conn, error) {
 	buf := make([]byte, 1024)
 	fmt.Fprintln(self.con, "PASV ")
 	n, err := self.con.Read(buf)
@@ -157,27 +162,26 @@ func (self *ftp) connection(status, Pathname string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer con.Close()
 	fmt.Fprintf(self.con, "%s %s\r\n", status, Pathname)
 	n, err = self.con.Read(buf)
 	if err != nil {
-		con.Close()
 		return nil, err
 	}
 	if !strings.Contains(string(buf[:n]), "150 Opening data channel") {
-		con.Close()
 		return nil, errors.New(string(buf[:n-2]))
 	}
 	return con, nil
 }
 
-func (self *ftp) Exit() {
+func (self *ftplogin) Exit() {
 	buf := make([]byte, 1024)
 	fmt.Fprintln(self.con, "QUIT ")
 	n, err := self.con.Read(buf)
 	if err == nil {
-		log.Print(string(buf[:n]))
+		fmt.Print(string(buf[:n]))
 	} else {
-		log.Println(err)
+		fmt.Println(err)
 	}
 	if self.con != nil {
 		self.con.Close()

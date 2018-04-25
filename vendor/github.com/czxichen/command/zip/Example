@@ -1,0 +1,71 @@
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+
+	"github.com/czxichen/AutoWork/tools/zip"
+)
+
+var (
+	src, dst string
+	c        bool
+)
+
+func init() {
+	flag.BoolVar(&c, "c", false, "-c 是否是压缩目录.")
+	flag.StringVar(&src, "s", "", "-s 指定源文件或者目录.")
+	flag.StringVar(&dst, "d", "", "-d 指定目标文件名或者目录")
+	flag.Parse()
+	if src == "" || dst == "" {
+		flag.Usage()
+		return
+	}
+}
+
+func main() {
+	if c {
+		info, err := os.Lstat(src)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		if !info.IsDir() {
+			fmt.Println("压缩源路径必须是目录.")
+			return
+		}
+		err = Zip(src, dst)
+		if err != nil {
+			fmt.Println(err)
+		}
+	} else {
+		info, err := os.Lstat(dst)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		if !info.IsDir() {
+			fmt.Println("解压路径必须是路径.")
+			return
+		}
+		err = Unzip(src, dst)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+}
+
+func Zip(src, dst string) error {
+	File, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	Z := zip.NewZipWriter(File)
+	defer Z.Close()
+	return Z.Walk(src)
+}
+
+func Unzip(src, dst string) error {
+	return zip.Unzip(src, dst, nil)
+}

@@ -3,8 +3,8 @@ package command
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,41 +12,42 @@ import (
 	"sync"
 	"time"
 
-	fsnotify "github.com/go-fsnotify/fsnotify"
+	"github.com/fsnotify/fsnotify"
+	"github.com/spf13/cobra"
 )
 
-type notifycfg struct {
-	dir    string
-	script string
-	file   string
-	debug  bool
+type fsnotify_config struct {
+	Dir    string
+	Script string
+	Path   string
+	Debug  bool
 }
 
 var (
-	notify   = notifycfg{}
-	Fsnotify = &Command{
-		UsageLine: `fsnotify -d tools -s scripts.bat`,
-		Run:       watch,
-		Short:     "可以用来监控文件或者目录的变化",
-		Long: `为了不重复执行脚本,十秒内的改变只会执行一次脚本,脚本路径为空则不执行任何操作
-`,
+	_fsnotify = fsnotify_config{}
+	Fsnotify  = &cobra.Command{
+		Use: "fsnotify",
+		Example: "	-d tools -s scripts.bat",
+		RunE:  fsnotify_run,
+		Short: "可以用来监控文件或者目录的变化",
+		Long:  "为了不重复执行脚本,十秒内的改变只会执行一次脚本,脚本路径为空则不执行任何操作",
 	}
 )
 
 func init() {
-	Fsnotify.Flag.StringVar(&notify.dir, "d", "./", `-d="./" 指定要监控的目录和-s结合使用,当指定-f的时候此参数不生效`)
-	Fsnotify.Flag.StringVar(&notify.script, "s", "", "-s scriptpath 指定当目录发生改变的时候调用此脚本,为空则不做任何操作")
-	Fsnotify.Flag.BoolVar(&notify.debug, "D", false, "-D=true 是否打印详细的变化信息")
-	Fsnotify.Flag.StringVar(&notify.file, "f", "", `-f configpath 从文件中读取配置,可以同时多个目录,每行一个,目录和脚本用","隔开`)
+	Fsnotify.PersistentFlags().StringVarP(&_fsnotify.Dir, "dir", "d", "./", "指定要监控的目录和-s结合使用,当指定-f的时候此参数不生效")
+	Fsnotify.PersistentFlags().StringVarP(&_fsnotify.Script, "script", "s", "", "指定当目录发生改变的时候调用此脚本,为空则不做任何操作")
+	Fsnotify.PersistentFlags().BoolVarP(&_fsnotify.Debug, "debug", "D", false, "是否打印详细的变化信息")
+	Fsnotify.PersistentFlags().StringVarP(&_fsnotify.Path, "config", "c", "", `从文件中读取配置,可以同时多个目录,每行一个,目录和脚本用','隔开`)
 }
 
-func watch(cmd *Command, arg []string) bool {
+func fsnotify_run(cmd *cobra.Command, arg []string) error {
 	var m = make(map[string]string)
-	if notify.file != "" {
-		File, err := os.Open(notify.file)
+	if _fsnotify.Path != "" {
+		File, err := os.Open(_fsnotify.Path)
 		if err != nil {
-			log.Println(err.Error())
-			return true
+			fmt.Printf("读取配置文件失败:%s\n", err.Error())
+			return nil
 		}
 		defer File.Close()
 		r := bufio.NewReader(File)
@@ -57,40 +58,39 @@ func watch(cmd *Command, arg []string) bool {
 				if err == io.EOF {
 					break
 				}
-				log.Println(err.Error())
-				return true
+				fmt.Printf("读取数据失败:", err.Error())
+				return nil
 			}
 			list = bytes.Split(line, []byte(","))
 			if len(list) == 2 {
 				m[filepath.Clean(string(bytes.TrimSpace(list[0])))] = filepath.Clean(string(bytes.TrimSpace(list[1])))
 			} else {
 				if len(list) != 1 {
-					log.Printf("无效数据:%s\n", string(line))
-					return false
+					fmt.Printf("无效数据:%s\n", string(line))
+					return nil
 				}
 				m[filepath.Clean(string(bytes.TrimSpace(list[0])))] = ""
 			}
 			if len(m) == 0 {
-				log.Println("未发现有效的数据,文件格式:/path/dir,script/path")
-				return true
+				fmt.Printf("未发现有效的数据,文件格式:/path/dir,script/path")
+				return nil
 			}
 		}
 	} else {
-		if notify.dir != "" {
-			m[notify.dir] = notify.script
+		if _fsnotify.Dir != "" {
+			m[_fsnotify.Dir] = _fsnotify.Script
 		} else {
-			return false
+			return fmt.Errorf("必须指定-c或者-d参数")
 		}
 	}
-	if notify.debug {
-		log.Println(m)
+	if _fsnotify.Debug {
+		fmt.Println(m)
 	}
 	err := watchfs(m)
 	if err != nil {
-		log.Println(err)
+		fmt.Println(err)
 	}
-
-	return true
+	return nil
 }
 
 func watchfs(env map[string]string) error {
@@ -102,7 +102,7 @@ func watchfs(env map[string]string) error {
 
 	for k, _ := range env {
 		err = watch.Add(k)
-		log.Printf("Add watch:%s\n", k)
+		fmt.Printf("Add watch:%s\n", k)
 		if err != nil {
 			return err
 		}
@@ -113,8 +113,8 @@ func watchfs(env map[string]string) error {
 	for {
 		select {
 		case event := <-watch.Events:
-			if notify.debug {
-				log.Println(event.String())
+			if _fsnotify.Debug {
+				fmt.Println(event.String())
 			}
 			ch <- event.Name
 		case err = <-watch.Errors:
@@ -145,7 +145,7 @@ func execute(ch chan string, env map[string]string) {
 				}
 			}
 
-			log.Printf("Path %s changed\n", path)
+			fmt.Printf("Path %s changed\n", path)
 			m.lock.Lock()
 			m.event[path] = true
 			m.lock.Unlock()
@@ -153,13 +153,13 @@ func execute(ch chan string, env map[string]string) {
 			if script != "" {
 				go func() {
 					<-time.After(10 * time.Second)
-					log.Printf("Start run %s\n", script)
+					fmt.Printf("Start run %s\n", script)
 					cmd := exec.Command(script)
 					buf, err := cmd.Output()
 					if err != nil {
-						log.Printf("Run script faild,%s\n", err.Error())
+						fmt.Printf("Run script faild,%s\n", err.Error())
 					} else {
-						log.Printf("Script %s result:%s\n", script, buf)
+						fmt.Printf("Script %s result:%s\n", script, buf)
 					}
 					delete(m.event, path)
 				}()

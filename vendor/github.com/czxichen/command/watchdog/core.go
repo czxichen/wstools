@@ -46,7 +46,7 @@ func (w *Watchdog) AddService(name, binary string) (*Service, error) {
 
 //启动服务
 func (w *Watchdog) Walk() {
-	log.Printf("Seesaw watchdog starting...")
+	log.Printf("Watchdog starting...")
 
 	w.mapDependencies()
 

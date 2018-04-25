@@ -1,8 +1,9 @@
 # Install:
-	go install -ldflags "-s -w" github.com/czxichen/wstools
+	* make
+	* go install -ldflags "-s -w" github.com/czxichen/wstools
 
 # Wstools Usage:
-	wstools [arguments]
+	wstools [command]
 	wstools help [command] for more information about a command
 
 # The commands are:
@@ -11,7 +12,7 @@
 	* compress    压缩解压文件
 	* net         检测远程地址或端口是否通
 	* find        根据条件查找文件
-	* md5         计算指定路径的md5值,可以是目录
+	* md5sum      计算指定路径的md5值,可以是目录
 	* ssl         使用rsa对证书简单操作
 	* compare     对文件或者目录经进行比较
 	* fsnotify    可以用来监控文件或者目录的变化
@@ -25,18 +26,18 @@
 
 # Example:
 	* wstools http -d /tmp/sharedir
-	* wstools mail -u root -p 123456 -F czxichen@163.com -T czxichen@163.com
-	* wstools compress -x -p tmp.zip -o ./
-	* wstools net -a telnet -H 127.0.0.1:80,www.baidu.com:80
-	* wstools find -d "./" -b 20160101 -l 10 -s ".go"
-	* wstools md5 -d "./" -e ".exe"
-	* wstools ssl -n -c cfg.json -o agent
-	* wstools compare -s command -d command_new -c diff
+	* wstools mail -u user -p passwd -H smtp.163.com:25 -f czxichen@163.com -t czxichen@163.com -c "Hello world"
+	* wstools compress -c -s uuid -d uuid.zip
+	* wstools net -a ping -i www.baidu.com,www.163.com -c 4 -q
+	* wstools find -p ./ -s "1M" -m "-1d"
+	* wstools md5sum -s sourcepath -o .*\.go
+	* wstools rsa -n -c example.json
+	* wstools compare -s uuid -d uuid_new -c diff
 	* wstools fsnotify -d tools -s scripts.bat
 	* wstools ssh -u root -p 123456 -H 192.168.1.2:22 -s main.go -d /tmp
-	* wstools ftp -l main.go -r /mnt/main.go -g false
-	* wstools replace -o "Hello world" -n "World Hello" -d ./ -s ".json" -q=true
+	* wstools ftp -u root -p toor -s main.go -d /Server/main.go -H 127.0.0.1:21
+	* wstools replace -p sourcepath -o "oldstr" -n "newstr"  -s .go
 	* wstools sysinfo
-	* wstools tail -f main.go -i 100 -s 200 -o tmp.txt
+	* wstools tail -f main.go -l 10 -n 5 -o tmp.txt
 	* wstools deploy server|client -h
 	* wstools watchdog -config watch.ini

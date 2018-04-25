@@ -1,0 +1,8 @@
+{
+	"CheckMd5" : true,
+	"Home":"/data/server",
+	"RequestMode":"http",
+	"MasteUrl":"127.0.0.1:1789",
+	"Primary":"",
+	"Action":"install"
+}

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
@@ -16,75 +15,79 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/cobra"
 )
 
-var (
-	mailCFG email
-	Mail    = &Command{
-		UsageLine: `mail -u root -p 123456 -F czxichen@163.com -T czxichen@163.com`,
-		Run:       mail,
-		Short:     "通过smtp协议发送邮件",
-		Long: `通过smtp协议发送邮件,当发送的内容超过10MB的时候,则临时编码内容存储到磁盘,防止占用内存资源过高
-`,
-	}
-)
+const memMaxSize = 10 << 20 //10MB
 
-func init() {
-	Mail.Flag.StringVar(&mailCFG.User, "u", "", `-u="root" 指定登录的用户,不能为空`)
-	Mail.Flag.StringVar(&mailCFG.Passwd, "p", "", `-p="123456" 指定用户密码,不能为空`)
-	Mail.Flag.StringVar(&mailCFG.Host, "a", "smtp.163.com:25", `-a="smtp.163.com:25" 指定服务器地址`)
-	Mail.Flag.StringVar(&mailCFG.Subject, "s", "", `-s="test" 指定邮件主题`)
-	Mail.Flag.StringVar(&mailCFG.From, "F", "", `-F="czxichen@163.com" 指定发送者的地址,不能为空`)
-	Mail.Flag.StringVar(&mailCFG.To, "T", "", `-T="czxichen@163.com" 指定接收者的地址,多地址使用','分割,不能为空`)
-	Mail.Flag.StringVar(&mailCFG.Content, "c", "", `-c="No reply" 指定邮件内容`)
-	Mail.Flag.StringVar(&mailCFG.ContentPath, "f", "", `-f="test.txt" 用文件内容做邮件内容,不能和-c同时使用`)
-	Mail.Flag.StringVar(&mailCFG.Attachments, "m", "", `-m="mutilpart.zip" 指定附件路径,多个附件用','分割`)
-	Mail.Flag.StringVar(&mailCFG.Type, "t", "plain", `-t="html" 指定邮件格式:plain or html`)
+var Mail = &cobra.Command{
+	Use: "mail",
+	Example: `	发送邮件
+	-u user -p passwd -H smtp.163.com:25 -f czxichen@163.com -t czxichen@163.com -c "Hello world"`,
+	Short: "邮件发送",
+	Long:  "使用smtp协议发送邮件,可以为文本格式或带附件发送",
+	RunE:  mail_run,
 }
 
-const memMaxSize = (1 << 20) * 10
+var _mail mail_config
 
-func mail(cmd *Command, args []string) bool {
-	if mailCFG.User == "" || mailCFG.Passwd == "" || mailCFG.From == "" || mailCFG.To == "" {
-		return false
+func init() {
+	Mail.PersistentFlags().StringVarP(&_mail.User, "user", "u", "", "指定登录的用户,不能为空")
+	Mail.PersistentFlags().StringVarP(&_mail.Passwd, "passwd", "p", "", "指定用户密码,不能为空")
+	Mail.PersistentFlags().StringVarP(&_mail.Host, "host", "H", "", "指定服务器地址端口")
+	Mail.PersistentFlags().StringVarP(&_mail.Subject, "subject", "s", "", "指定邮件主题")
+	Mail.PersistentFlags().StringVarP(&_mail.From, "from", "f", "", "指定发送者的地址,不能为空")
+	Mail.PersistentFlags().StringVarP(&_mail.To, "to", "t", "", "指定接收者的地址,多地址使用','分割,不能为空")
+	Mail.PersistentFlags().StringVarP(&_mail.Content, "content", "c", "", "指定邮件内容")
+	Mail.PersistentFlags().StringVarP(&_mail.ContentPath, "Cpath", "C", "", "用文件内容做邮件内容,不能和-c同时使用")
+	Mail.PersistentFlags().StringVarP(&_mail.Attachments, "attachments", "a", "", "指定附件路径,多个附件用','分割")
+	Mail.PersistentFlags().StringVarP(&_mail.Type, "type", "T", "plain", "指定邮件格式:plain|html")
+
+}
+
+func mail_run(cmd *cobra.Command, args []string) error {
+	if _mail.User == "" || _mail.Passwd == "" || _mail.From == "" || _mail.To == "" {
+		return fmt.Errorf("参数错误")
 	}
-	size, err := mailCFG.Len()
+
+	size, err := _mail.Len()
 	if err != nil {
-		log.Println(err)
-		return true
+		fmt.Printf("获取邮件大小失败:%s\n", err.Error())
+		return nil
 	}
+
 	var file io.ReadWriter
 	if size >= memMaxSize {
 		temp := fmt.Sprintf(".%d.tmp", os.Getpid())
 		file, err = os.Create(temp)
 		if err != nil {
-			log.Println(err)
-			return true
+			fmt.Printf("创建临时文件失败:%s\n", err.Error())
+			return nil
 		}
 		defer os.Remove(temp)
 	} else {
 		file = bytes.NewBuffer(make([]byte, 0, size))
 	}
-	err = mailCFG.Writer(file)
+	err = _mail.Writer(file)
 	if err != nil {
-		log.Println(err)
-		return true
+		fmt.Printf("封装邮件内容失败:%s\n", err)
+		return nil
 	}
-	auth := smtp.PlainAuth("", mailCFG.User, mailCFG.Passwd, strings.Split(mailCFG.Host, ":")[0])
-	err = Send(mailCFG, auth, file)
-
+	auth := smtp.PlainAuth("", _mail.User, _mail.Passwd, strings.Split(_mail.Host, ":")[0])
+	err = Send(_mail, auth, file)
 	if c, ok := file.(io.Closer); ok {
 		c.Close()
 	}
 
 	if err != nil {
-		log.Println(err)
-		return true
+		fmt.Printf("邮件发送失败:%s\n", err.Error())
 	}
-	return true
+
+	return nil
 }
 
-func Send(msg email, auth smtp.Auth, body io.Reader) error {
+func Send(msg mail_config, auth smtp.Auth, body io.Reader) error {
 	to := strings.Split(msg.To, ",")
 	if msg.From == "" || len(to) == 0 {
 		return errors.New("Must specify at least one From address and one To address")
@@ -143,32 +146,7 @@ func Send(msg email, auth smtp.Auth, body io.Reader) error {
 	return client.Quit()
 }
 
-func Attach(w *multipart.Writer, filename string) (err error) {
-	typ := mime.TypeByExtension(filepath.Ext(filename))
-	var Header = make(textproto.MIMEHeader)
-	if typ != "" {
-		Header.Set("Content-Type", typ)
-	} else {
-		Header.Set("Content-Type", "application/octet-stream")
-	}
-	basename := filepath.Base(filename)
-	Header.Set("Content-Disposition", fmt.Sprintf("attachment;\r\n filename=\"%s\"", basename))
-	Header.Set("Content-ID", fmt.Sprintf("<%s>", basename))
-	Header.Set("Content-Transfer-Encoding", "base64")
-	File, err := os.Open(filename)
-	if err != nil {
-		return err
-	}
-	defer File.Close()
-
-	mw, err := w.CreatePart(Header)
-	if err != nil {
-		return err
-	}
-	return base64Wrap(mw, File)
-}
-
-type email struct {
+type mail_config struct {
 	User, Passwd, Host string
 	From, To, Type     string
 	Subject, Content   string
@@ -176,7 +154,7 @@ type email struct {
 	Attachments        string
 }
 
-func (e email) Headers() (textproto.MIMEHeader, error) {
+func (e mail_config) Headers() (textproto.MIMEHeader, error) {
 	res := make(textproto.MIMEHeader)
 	if _, ok := res["To"]; !ok && len(e.To) > 0 {
 		res.Set("To", e.To)
@@ -192,7 +170,7 @@ func (e email) Headers() (textproto.MIMEHeader, error) {
 	return res, nil
 }
 
-func (e email) Writer(datawriter io.Writer) error {
+func (e mail_config) Writer(datawriter io.Writer) error {
 	headers, err := e.Headers()
 	if err != nil {
 		return err
@@ -260,16 +238,18 @@ func (e email) Writer(datawriter io.Writer) error {
 	return nil
 }
 
-func (e email) Len() (int64, error) {
+func (e mail_config) Len() (int64, error) {
 	var l int64
 	if e.Content != "" {
 		l += int64(len(e.Content))
-	} else {
+	} else if e.ContentPath != "" {
 		stat, err := os.Lstat(e.ContentPath)
 		if err != nil {
 			return 0, err
 		}
 		l += stat.Size()
+	} else {
+		return 0, nil
 	}
 	if e.Attachments != "" {
 		for _, path := range strings.Split(e.Attachments, ",") {
@@ -297,6 +277,31 @@ func headerToBytes(w io.Writer, header textproto.MIMEHeader) {
 			io.WriteString(w, "\r\n")
 		}
 	}
+}
+
+func Attach(w *multipart.Writer, filename string) (err error) {
+	typ := mime.TypeByExtension(filepath.Ext(filename))
+	var Header = make(textproto.MIMEHeader)
+	if typ != "" {
+		Header.Set("Content-Type", typ)
+	} else {
+		Header.Set("Content-Type", "application/octet-stream")
+	}
+	basename := filepath.Base(filename)
+	Header.Set("Content-Disposition", fmt.Sprintf("attachment;\r\n filename=\"%s\"", basename))
+	Header.Set("Content-ID", fmt.Sprintf("<%s>", basename))
+	Header.Set("Content-Transfer-Encoding", "base64")
+	File, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer File.Close()
+
+	mw, err := w.CreatePart(Header)
+	if err != nil {
+		return err
+	}
+	return base64Wrap(mw, File)
 }
 
 func base64Wrap(w io.Writer, r io.Reader) error {
