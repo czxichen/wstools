@@ -1,10 +1,14 @@
+[![Build Status](https://travis-ci.org/czxichen/wstools.svg?branch=master)](https://travis-ci.org/czxichen/wstools)
+[![GoDoc](https://godoc.org/github.com/czxichen/wstools?status.svg)](http://godoc.org/github.com/czxichen/wstools)
+[![Go Report](https://goreportcard.com/badge/github.com/czxichen/wstools)](https://goreportcard.com/report/github.com/czxichen/wstools)
+
 # Install:
 	* make
 	* go install -ldflags "-s -w" github.com/czxichen/wstools
 
 # Wstools Usage:
-	wstools [command]
-	wstools help [command] for more information about a command
+	* wstools [command]
+	* wstools help [command] for more information about a command
 
 # The commands are:
 	* http        用过http协议传输共享文件
