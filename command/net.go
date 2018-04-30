@@ -17,16 +17,6 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-type netconfig struct {
-	Action    string
-	Host      string
-	TimeOut   int
-	Count     bool
-	PingCount int
-	File      string
-	QuickMode bool
-}
-
 var Net = &cobra.Command{
 	Use: "net",
 	Example: `	并发模式ping测试指定主机的网络连通性
