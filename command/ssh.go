@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ var (
 		Example: `	-C iplist -c ls
 	-C iplist -s main.go -d /tmp
 	-c ls -u root -p 123456 -H 192.168.1.2:22
+	-c ls -u root -P id_rsa -H 192.168.0.129:22
 	-u root -p 123456 -H 192.168.1.2:22 -s main.go -d /tmp`,
 		RunE:  ssh_run,
 		Short: "使用ssh协议群发命令或发送文件",
@@ -34,7 +36,9 @@ type ssh_config struct {
 	hosts, cmd   string
 	sfile, dpath string
 	user, passwd string
+	privatekey   string
 	timeout      int
+	hostfile     bool
 }
 
 func init() {
@@ -45,22 +49,32 @@ func init() {
 	Ssh.PersistentFlags().StringVarP(&_ssh.dpath, "dst", "d", "", `指定文件保存路径`)
 	Ssh.PersistentFlags().StringVarP(&_ssh.user, "user", "u", "", `指定登录的用户`)
 	Ssh.PersistentFlags().StringVarP(&_ssh.passwd, "passwd", "p", "", `指定登录用户密码`)
+	Ssh.PersistentFlags().StringVarP(&_ssh.privatekey, "private", "P", "", `使用私钥登录服务器`)
 	Ssh.PersistentFlags().StringVarP(&_ssh.out, "out", "o", "", `指定结果输出文件,不指定则直接输出到标准输出`)
+	Ssh.PersistentFlags().BoolVarP(&_ssh.hostfile, "hostfile", "f", false, `指定Host从文件读取,指定次参数,-H参数必须是文件路径`)
 	Ssh.PersistentFlags().IntVarP(&_ssh.timeout, "timeout", "t", 30, `指定连接超时时间`)
 }
 
 func ssh_run(cmd *cobra.Command, arg []string) error {
+	var err error
 	var host []string
 	var hosts [][]string
 
 	if _ssh.hosts == "" && _ssh.config == "" {
-		return fmt.Errorf("参数错误,必须指定主机地址")
+		return fmt.Errorf("参数错误,必须指定主机地址或主机配置文件")
 	} else {
-		if _ssh.hosts != "" {
+		if _ssh.hosts != "" && !_ssh.hostfile {
 			host = strings.Split(_ssh.hosts, ",")
 		} else {
-			var err error
-			hosts, err = FileLine(_ssh.config, 3)
+			if _ssh.hostfile {
+				hosts, err = FileLine(_ssh.config, 1)
+				host = make([]string, 0, len(hosts))
+				for _, h := range hosts {
+					host = append(host, h[0])
+				}
+			} else {
+				hosts, err = FileLine(_ssh.config, 3)
+			}
 			if err != nil {
 				fmt.Printf("读取主机列表失败,%s\n", err.Error())
 				return nil
@@ -76,7 +90,6 @@ func ssh_run(cmd *cobra.Command, arg []string) error {
 	defer output.Close()
 
 	if _ssh.out != "" {
-		var err error
 		output, err = os.Create(_ssh.out)
 		if err != nil {
 			fmt.Printf("创建结果文件失败:%s\n", err.Error())
@@ -84,17 +97,20 @@ func ssh_run(cmd *cobra.Command, arg []string) error {
 		}
 	}
 	if _ssh.cmd == "" && (_ssh.sfile == "" || _ssh.dpath == "") {
-		return fmt.Errorf("参数错误")
+		return fmt.Errorf("参数错误\n")
 	}
 
 	wait := new(sync.WaitGroup)
 	if host != nil {
-		if _ssh.user == "" || _ssh.passwd == "" {
-			return fmt.Errorf("必须指定用户名,密码")
+		if _ssh.user == "" || _ssh.passwd == "" && _ssh.privatekey == "" {
+			return fmt.Errorf("必须指定用户名,密码或私钥")
 		}
-
 		for _, h := range host {
-			c := newsshInfo(_ssh.user, _ssh.passwd, h, _ssh.timeout)
+			c, err := newsshInfo(&_ssh, h)
+			if err != nil {
+				fmt.Println(err.Error())
+				return nil
+			}
 			wait.Add(1)
 			if _ssh.cmd != "" {
 				go sendcommand(_ssh.cmd, wait, c, output)
@@ -104,7 +120,14 @@ func ssh_run(cmd *cobra.Command, arg []string) error {
 		}
 	} else {
 		for _, info := range hosts {
-			c := newsshInfo(info[1], info[2], info[0], _ssh.timeout)
+			_ssh.user = info[1]
+			_ssh.passwd = info[2]
+			c, err := newsshInfo(&_ssh, info[0])
+			if err != nil {
+				fmt.Println(err.Error())
+				return nil
+			}
+
 			wait.Add(1)
 			if _ssh.cmd != "" {
 				go sendcommand(_ssh.cmd, wait, c, output)
@@ -128,7 +151,6 @@ func sendcommand(cmd string, wait *sync.WaitGroup, c *sshInfof, w io.Writer) {
 		}
 		return
 	}
-
 	fmt.Fprintf(w, "%s执行结果:\n%s\n", c.host, string(buf))
 }
 
@@ -145,18 +167,35 @@ func sendfile(sfile, dpath string, wait *sync.WaitGroup, c *sshInfof, w io.Write
 	fmt.Fprintf(w, "%s发送文件成功 \n", c.host)
 }
 
-func newsshInfo(user, passwd, host string, timeout int) *sshInfof {
+func newsshInfo(info *ssh_config, host string) (*sshInfof, error) {
+	if info == nil {
+		return nil, fmt.Errorf("base config can't null")
+	}
 	cfg := &ssh.ClientConfig{
-		User: user,
-		Auth: []ssh.AuthMethod{
-			ssh.Password(passwd),
-		},
-		Timeout: time.Duration(timeout) * time.Second,
+		User:    info.user,
+		Auth:    []ssh.AuthMethod{},
+		Timeout: time.Duration(info.timeout) * time.Second,
 		HostKeyCallback: func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 			return nil
 		},
 	}
-	return &sshInfof{host: host, config: cfg}
+	if info.privatekey != "" {
+		buf, err := ioutil.ReadFile(info.privatekey)
+		if err != nil {
+			return nil, fmt.Errorf("Read private key error:%s", err.Error())
+		}
+		sig, err := ssh.ParsePrivateKey(buf)
+		if err != nil {
+			return nil, fmt.Errorf("Parse private key error:%s", err.Error())
+		}
+		cfg.Auth = append(cfg.Auth, ssh.PublicKeys(sig))
+	}
+
+	if info.passwd != "" {
+		cfg.Auth = append(cfg.Auth, ssh.Password(info.passwd))
+	}
+
+	return &sshInfof{host: host, config: cfg}, nil
 }
 
 type sshInfof struct {
