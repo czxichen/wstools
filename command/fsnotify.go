@@ -58,7 +58,7 @@ func fsnotify_run(cmd *cobra.Command, arg []string) error {
 				if err == io.EOF {
 					break
 				}
-				fmt.Printf("读取数据失败:", err.Error())
+				fmt.Printf("读取数据失败:%s", err.Error())
 				return nil
 			}
 			list = bytes.Split(line, []byte(","))
