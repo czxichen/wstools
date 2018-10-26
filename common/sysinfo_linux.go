@@ -14,11 +14,14 @@ import (
 	"time"
 )
 
+// GetMotherboardInfo GetMotherboardInfo
 func GetMotherboardInfo() string { return "" }
 
+// GetBiosInfo 获取BIOS信息
 func GetBiosInfo() string { return "" }
 
-func GetDiskInfo() (infos []diskusage) {
+// GetDiskInfo 获取磁盘使用率
+func GetDiskInfo() (infos []DiskUsage) {
 	fs := getFileSystems()
 	if len(fs) == 0 {
 		return
@@ -48,7 +51,7 @@ func GetDiskInfo() (infos []diskusage) {
 	}
 
 	for _, path := range mounts {
-		var usage = diskusage{Path: path}
+		var usage = DiskUsage{Path: path}
 		var info = new(syscall.Statfs_t)
 		if err := syscall.Statfs(path, info); err == nil {
 			usage.Total = info.Blocks * uint64(info.Bsize)

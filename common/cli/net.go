@@ -65,7 +65,7 @@ func NetRun(netConfig *NetConfig) error {
 				fmt.Printf("Ping %s faild,%s\n", host, err.Error())
 				continue
 			}
-			var Ping func(c int)
+			var Ping func(c int) error
 			if netConfig.Sum {
 				Ping = p.PingCount
 			} else {
@@ -74,11 +74,15 @@ func NetRun(netConfig *NetConfig) error {
 			if netConfig.Quick {
 				wait.Add(1)
 				go func() {
-					Ping(netConfig.Count)
+					if err := Ping(netConfig.Count); err != nil {
+						fmt.Printf("ping error:%s\n", err.Error())
+					}
 					wait.Done()
 				}()
 			} else {
-				Ping(netConfig.Count)
+				if err := Ping(netConfig.Count); err != nil {
+					fmt.Printf("ping error:%s\n", err.Error())
+				}
 			}
 		}
 		wait.Wait()
@@ -163,11 +167,10 @@ type NetPing struct {
 }
 
 // Ping ping
-func (p *NetPing) Ping(count int) {
+func (p *NetPing) Ping(count int) error {
 	var buf = bytes.NewBuffer(nil)
 	if err := p.Init(); err != nil {
-		fmt.Println(err.Error())
-		return
+		return err
 	}
 
 	fmt.Printf("Start ping from %s\n", p.Addr)
@@ -192,13 +195,13 @@ func (p *NetPing) Ping(count int) {
 	if buf != nil {
 		fmt.Println(string(buf.Bytes()))
 	}
+	return nil
 }
 
 // PingCount ping统计
-func (p *NetPing) PingCount(count int) {
+func (p *NetPing) PingCount(count int) error {
 	if err := p.Init(); err != nil {
-		fmt.Println(err.Error())
-		return
+		return err
 	}
 
 	var times, ttl, errs int
@@ -216,12 +219,14 @@ func (p *NetPing) PingCount(count int) {
 	sucess := count - errs
 	fmt.Printf("From %s Reply:sucess=%d abytes=32 atime=%.2fms attl=%.2f faild=%d\n",
 		p.Addr, sucess, float64(times)/float64(sucess), float64(ttl)/float64(sucess), errs)
+	return nil
 }
 
 // Init 初始化Ping
-func (p *NetPing) Init() (err error) {
-	p.conn, err = net.Dial("ip4:icmp", p.Addr)
-	return
+func (p *NetPing) Init() error {
+	conn, err := net.Dial("ip4:icmp", p.Addr)
+	p.conn = conn
+	return err
 }
 
 // SetDeadline 设置超时时间单位s
@@ -241,17 +246,18 @@ type reply struct {
 	Error error
 }
 
-func sendPingMsg(c net.Conn, data []byte) (rep *reply) {
+func sendPingMsg(c net.Conn, data []byte) *reply {
+	rep := new(reply)
 	start := time.Now()
 	if _, rep.Error = c.Write(data); rep.Error != nil {
-		return
+		return rep
 	}
 
 	rb := make([]byte, 1500)
 	var n int
 	n, rep.Error = c.Read(rb)
 	if rep.Error != nil {
-		return
+		return rep
 	}
 
 	duration := time.Now().Sub(start)
@@ -266,7 +272,7 @@ func sendPingMsg(c net.Conn, data []byte) (rep *reply) {
 	var rm *icmp.Message
 	rm, rep.Error = icmp.ParseMessage(1, rb[:n])
 	if rep.Error != nil {
-		return
+		return rep
 	}
 
 	switch rm.Type {
@@ -278,5 +284,5 @@ func sendPingMsg(c net.Conn, data []byte) (rep *reply) {
 	default:
 		rep.Error = fmt.Errorf("Not ICMPTypeEchoReply %v", rm)
 	}
-	return
+	return rep
 }

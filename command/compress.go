@@ -13,7 +13,7 @@ import (
 
 // Compress 压缩命令
 var Compress = &cobra.Command{
-	Use: "compressConfig",
+	Use: "compress",
 	Example: `	使用zip协议压缩目录uuid为uuid.zip
 	-c -s uuid -d uuid.zip
 	使用zip协议解压uuid.zip文件,到uuid目录

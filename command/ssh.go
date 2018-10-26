@@ -117,27 +117,28 @@ func sshRun(cmd *cobra.Command, arg []string) {
 	}
 
 	if sshConfig.cmd != "" {
-		var cmdChan = make(chan string, 1)
 		var retChan = make(chan *cli.SSHResult, 1)
 		clients := cli.InitClients(conns, sshConfig.timeout, output)
 		if len(clients) != 0 {
 			go func() {
 				for host, client := range clients {
+					cmdChan := make(chan string, 1)
+					cmdChan <- sshConfig.cmd
+					close(cmdChan)
 					if err := cli.SSHSendCommonds(host, client.Client, cmdChan, retChan); err != nil {
-						retChan <- &cli.SSHResult{Error: err}
+						retChan <- &cli.SSHResult{Host: host, Error: err}
 					}
 				}
 			}()
 			for i := 0; i < len(clients); i++ {
 				ret := <-retChan
 				if ret.Error == nil {
-					fmt.Fprintf(output, "---------------------------SUCCESS\t%s---------------------------\n%s\n------------------------------------------------------\n", ret.Host, ret.Data)
+					fmt.Fprintf(output, "---------------------------SUCCESS\t%s---------------------------\n%s\n", ret.Host, ret.Data)
 				} else {
-					fmt.Fprintf(output, "---------------------------FAILD\t%s---------------------------\n%s\n------------------------------------------------------\n", ret.Host, ret.Error.Error())
+					fmt.Fprintf(output, "---------------------------FAILD\t%s---------------------------\n%s\n", ret.Host, ret.Error.Error())
 				}
 			}
 			close(retChan)
-			close(cmdChan)
 		}
 	} else {
 		cli.SSHBatchSendFile(conns, sshConfig.timeout, sshConfig.sfile, sshConfig.dpath, output)
