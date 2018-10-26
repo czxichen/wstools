@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bufio"
 	"io"
 	"os"
 	"path/filepath"
@@ -64,4 +65,28 @@ func CopyDir(src, dst string) error {
 		}
 		return Copy(path, ndst)
 	})
+}
+
+// FileLine 返回所有行数据,每行必须有count个字段
+func FileLine(path string, count int) ([][]string, error) {
+	File, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer File.Close()
+	var list [][]string
+	buf := bufio.NewReader(File)
+	for {
+		line, _, err := buf.ReadLine()
+		if err != nil {
+			if err != io.EOF {
+				return list, err
+			}
+			return list, nil
+		}
+		l := strings.Fields(string(line))
+		if len(l) == count {
+			list = append(list, l)
+		}
+	}
 }

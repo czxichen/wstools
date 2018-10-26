@@ -9,9 +9,13 @@ import (
 )
 
 var (
-	Author  string = "dijielin"
-	EMail   string = "dijielin@qq.com"
+	// Author Author
+	Author string = "dijielin"
+	// EMail EMail
+	EMail string = "dijielin@qq.com"
+	// BuildTS BuildTS
 	BuildTS string
+	// GitHash GitHash
 	GitHash string
 )
 
@@ -31,6 +35,6 @@ func main() {
 	command.HelpFunc(rootCMD)
 	rootCMD.AddCommand(version, command.Compress, command.Md5sum, command.Net, command.Deploy,
 		command.Find, command.Compare, command.Ftp, command.RSA, command.Tail, command.Watchdog,
-		command.Http, command.Mail, command.Replace, command.SysInfo, command.Ssh, command.Fsnotify)
+		command.HTTP, command.Mail, command.Replace, command.SysInfo, command.SSH, command.Fsnotify)
 	rootCMD.Execute()
 }

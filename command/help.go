@@ -4,6 +4,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// HelpFunc HelpFunc
 func HelpFunc(c *cobra.Command) {
 	c.SetHelpCommand(&cobra.Command{
 		Use:   "help [command]",

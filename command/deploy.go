@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Deploy 部署命令
 var Deploy = &cobra.Command{
 	Use:   `deploy`,
 	Short: "快速搭建服务器",

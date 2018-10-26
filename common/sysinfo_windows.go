@@ -19,7 +19,7 @@ var (
 	getModuleFileNameExW = psapi.NewProc("GetModuleFileNameExW")
 )
 
-//开机时间
+// GetStartTime 开机时间
 func GetStartTime() string {
 	GetTickCount := kernel.NewProc("GetTickCount")
 	r, _, _ := GetTickCount.Call()
@@ -30,7 +30,7 @@ func GetStartTime() string {
 	return ms.String()
 }
 
-//当前用户名
+// GetUserName 当前用户名
 func GetUserName() string {
 	var size uint32 = 128
 	var buffer = make([]uint16, size)
@@ -49,7 +49,7 @@ func GetUserName() string {
 	return syscall.UTF16ToString(buffer[:old+r])
 }
 
-//系统版本
+// GetSystemVersion 系统版本
 func GetSystemVersion() string {
 	version, err := syscall.GetVersion()
 	if err != nil {
@@ -58,9 +58,9 @@ func GetSystemVersion() string {
 	return fmt.Sprintf("%d.%d (%d)", byte(version), uint8(version>>8), version>>16)
 }
 
-func usage(getDiskFreeSpaceExW *syscall.LazyProc, path string) (diskusage, error) {
+func usage(getDiskFreeSpaceExW *syscall.LazyProc, path string) (DiskUsage, error) {
 	lpFreeBytesAvailable := int64(0)
-	var info = diskusage{Path: path}
+	var info = DiskUsage{Path: path}
 	diskret, _, err := getDiskFreeSpaceExW.Call(
 		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(info.Path))),
 		uintptr(unsafe.Pointer(&lpFreeBytesAvailable)),
@@ -72,8 +72,8 @@ func usage(getDiskFreeSpaceExW *syscall.LazyProc, path string) (diskusage, error
 	return info, err
 }
 
-//硬盘信息
-func GetDiskInfo() (infos []diskusage) {
+// GetDiskInfo 硬盘信息
+func GetDiskInfo() (infos []DiskUsage) {
 	GetLogicalDriveStringsW := kernel.NewProc("GetLogicalDriveStringsW")
 	GetDiskFreeSpaceExW := kernel.NewProc("GetDiskFreeSpaceExW")
 	lpBuffer := make([]byte, 254)
@@ -99,8 +99,8 @@ func GetDiskInfo() (infos []diskusage) {
 	return infos
 }
 
-//CPU信息
-func GetCpuInfo() string {
+// GetCPUInfo CPU信息
+func GetCPUInfo() string {
 	var size uint32 = 128
 	var buffer = make([]uint16, size)
 	var index = uint32(copy(buffer, syscall.StringToUTF16("Num:")) - 1)
@@ -132,7 +132,7 @@ type memoryStatusEx struct {
 	ullAvailExtendedVirtual uint64
 }
 
-//内存信息
+// GetMemory 内存信息
 func GetMemory() string {
 	GlobalMemoryStatusEx := kernel.NewProc("GlobalMemoryStatusEx")
 	var memInfo memoryStatusEx
@@ -144,19 +144,20 @@ func GetMemory() string {
 	return fmt.Sprint(memInfo.ullTotalPhys / (1024 * 1024))
 }
 
-type intfInfo struct {
+// InterfaceInfo 网卡信息
+type InterfaceInfo struct {
 	Name string
 	Ipv4 []string
 	Ipv6 []string
 }
 
-//网卡信息
-func GetIntfs() []intfInfo {
+// GetIntfs 网卡信息
+func GetIntfs() []InterfaceInfo {
 	intf, err := net.Interfaces()
 	if err != nil {
-		return []intfInfo{}
+		return []InterfaceInfo{}
 	}
-	var is = make([]intfInfo, len(intf))
+	var is = make([]InterfaceInfo, len(intf))
 	for i, v := range intf {
 		ips, err := v.Addrs()
 		if err != nil {
@@ -174,7 +175,7 @@ func GetIntfs() []intfInfo {
 	return is
 }
 
-//主板信息
+// GetMotherboardInfo 主板信息
 func GetMotherboardInfo() string {
 	var s = []struct {
 		Product string
@@ -186,7 +187,7 @@ func GetMotherboardInfo() string {
 	return s[0].Product
 }
 
-//BIOS信息
+// GetBiosInfo BIOS信息
 func GetBiosInfo() string {
 	var s = []struct {
 		Name string
@@ -198,8 +199,9 @@ func GetBiosInfo() string {
 	return s[0].Name
 }
 
+// ListDynamicModule 查看进程打开的动态库
 func ListDynamicModule(pid uint32, mode ListMode) ([]string, error) {
-	//获取进程句柄
+	// 获取进程句柄
 	var hProcess, err = syscall.OpenProcess(0x0400|0x0010, false, pid)
 	if err != nil {
 		return nil, err

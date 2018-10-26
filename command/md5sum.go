@@ -6,10 +6,13 @@ import (
 	"path/filepath"
 	"regexp"
 
+	"github.com/czxichen/wstools/common/cli"
+
 	"github.com/czxichen/command"
 	"github.com/spf13/cobra"
 )
 
+// Md5sum 计算md5
 var Md5sum = &cobra.Command{
 	Use: "md5sum",
 	Example: `	
@@ -17,27 +20,28 @@ var Md5sum = &cobra.Command{
 	-s sourcepath -o .*\.go`,
 	Short: "计算文件的md5值",
 	Long:  "用来计算文件或者个目录下所有文件的md5值",
-	RunE:  md5sum_run,
+	Run:   md5sumRun,
 }
 
-type md5sum_config struct {
+// Md5sumConfig 计算md5
+type Md5sumConfig struct {
 	source string
 	only   string
 	invert string
 }
 
-var _md5sum md5sum_config
+var md5sum Md5sumConfig
 
 func init() {
-	Md5sum.PersistentFlags().StringVarP(&_md5sum.source, "source", "s", "", "指定要计算的路径")
-	Md5sum.PersistentFlags().StringVarP(&_md5sum.only, "only", "o", "", "正则表达式,表示只计算匹配到的文件")
-	Md5sum.PersistentFlags().StringVarP(&_md5sum.invert, "invert", "v", "", "正则表达式,表示不计算匹配到的文件")
+	Md5sum.PersistentFlags().StringVarP(&md5sum.source, "source", "s", "", "指定要计算的路径")
+	Md5sum.PersistentFlags().StringVarP(&md5sum.only, "only", "o", "", "正则表达式,表示只计算匹配到的文件")
+	Md5sum.PersistentFlags().StringVarP(&md5sum.invert, "invert", "v", "", "正则表达式,表示不计算匹配到的文件")
 }
 
-func md5sum_run(cmd *cobra.Command, args []string) error {
-	_, err := os.Lstat(_md5sum.source)
+func md5sumRun(cmd *cobra.Command, args []string) {
+	_, err := os.Lstat(md5sum.source)
 	if err != nil {
-		return err
+		cli.FatalOutput(1, "查看路径状态错误:%s\n", err.Error())
 	}
 
 	var (
@@ -45,22 +49,19 @@ func md5sum_run(cmd *cobra.Command, args []string) error {
 		invert *regexp.Regexp
 	)
 
-	if _md5sum.only != "" {
-		only, err = regexp.Compile(_md5sum.only)
-		if err != nil {
-			return err
-		}
-
-	}
-
-	if _md5sum.invert != "" {
-		invert, err = regexp.Compile(_md5sum.invert)
-		if err != nil {
-			return err
+	if md5sum.only != "" {
+		if only, err = regexp.Compile(md5sum.only); err != nil {
+			cli.FatalOutput(1, "%s\n", err.Error())
 		}
 	}
 
-	err = filepath.Walk(_md5sum.source, func(path string, info os.FileInfo, err error) error {
+	if md5sum.invert != "" {
+		if invert, err = regexp.Compile(md5sum.invert); err != nil {
+			cli.FatalOutput(1, "%s\n", err.Error())
+		}
+	}
+
+	err = filepath.Walk(md5sum.source, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -92,8 +93,5 @@ func md5sum_run(cmd *cobra.Command, args []string) error {
 
 		return nil
 	})
-	if err != nil {
-		fmt.Printf("计算MD5失败:%s\n", err.Error())
-	}
-	return nil
+	cli.FatalOutput(1, "计算MD5失败:%s\n", err.Error())
 }

@@ -94,7 +94,7 @@ func getFileSystems() (ret []string) {
 	return
 }
 
-func GetCpuInfo() string {
+func GetCPUInfo() string {
 	return fmt.Sprintf("Num:%d Arch:%s", runtime.NumCPU(), runtime.GOARCH)
 }
 

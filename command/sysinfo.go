@@ -8,14 +8,15 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// SysInfo 查看系统信息
 var SysInfo = &cobra.Command{
 	Use:   `sysinfo`,
-	RunE:  sysinfo_run,
+	Run:   sysinfoRun,
 	Short: "查看系统信息",
 	Long:  "查看简要的系统信息",
 }
 
-func sysinfo_run(cmd *cobra.Command, args []string) error {
+func sysinfoRun(cmd *cobra.Command, args []string) {
 	fmt.Printf("开机时长:%s\n", common.GetStartTime())
 	fmt.Printf("当前用户:%s\n", common.GetUserName())
 	fmt.Printf("当前系统:%s\n", runtime.GOOS)
@@ -23,7 +24,7 @@ func sysinfo_run(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Bios:\t%s\n", common.GetBiosInfo())
 	fmt.Printf("Motherboard:\t%s\n", common.GetMotherboardInfo())
 
-	fmt.Printf("CPU:\t%s\n", common.GetCpuInfo())
+	fmt.Printf("CPU:\t%s\n", common.GetCPUInfo())
 	fmt.Printf("Memory:\t%s\n", common.GetMemory())
 	fmt.Printf("Disk:\n")
 	infos := common.GetDiskInfo()
@@ -35,5 +36,4 @@ func sysinfo_run(cmd *cobra.Command, args []string) error {
 	for _, v := range intfs {
 		fmt.Printf("Name:%s\tIpv4:%s\tIpv6:%s\n", v.Name, v.Ipv4, v.Ipv6)
 	}
-	return nil
 }
