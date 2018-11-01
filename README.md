@@ -27,6 +27,7 @@
 	* tail        从文件结尾或指定位置读取内容
 	* deploy      快速搭建服务器
 	* watchdog    进程守护
+	* monitor     Prometheus监控采集节点
 
 # Example:
 	* wstools http -d /tmp/sharedir
@@ -45,3 +46,4 @@
 	* wstools tail -f main.go -l 10 -n 5 -o tmp.txt
 	* wstools deploy server|client -h
 	* wstools watchdog -config watch.ini
+	* wstools monitor -e http://192.168.0.128:9091/metrics -i 30
